@@ -1,0 +1,5 @@
+[book]
+authors = ["nelsmartin"]
+language = "en"
+src = "src"
+title = "Theory of Computation in Lean"
