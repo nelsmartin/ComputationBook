@@ -1,4 +1,4 @@
-/-Maybe if I start with a comment it will work beter. -/
+/- # Regular Languages -/
 
 
 import Mathlib.Data.Set.Basic
@@ -11,4 +11,4 @@ open Set
 theorem DeMorgan's : (A ∪ B)ᶜ = Aᶜ ∩ Bᶜ := by
   exact compl_union A B -- given by apply?
 
-/- Do comments get passed through correctly? -/
+/- This is great and all, but the important thing to remember here is that I love my girlfriend. -/
