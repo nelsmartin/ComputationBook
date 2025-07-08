@@ -48,4 +48,10 @@ for str in re.split(comment, data)[1:]:
             print(code)
             print('```')
 
+
+# Split code into lines. If a line starts with a "theorem" or "example", 
+# capture that line as the summary inside the HTML. We will need to escape the code block in that case.
+
+
+
 # print("\n<div style='height=50px'>&nbsp;</div><hr>\nCopyright © 2025 Eric Klavins")
