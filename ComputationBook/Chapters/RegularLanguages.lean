@@ -131,6 +131,7 @@ theorem regular_languages_closed_under_union {Q₁ : Type u} {Q₂ : Type w} {σ
         by apply Or.inr; simp; exact h_accept⟩
 
 
+
 structure NFA (Q : Type u) (σ : Type v) where
   δ : Q → σ → Set Q
   q₀ : Q
@@ -223,6 +224,8 @@ def NFA_to_DFA {Q : Type u} {σ : Type v} (N : NFA Q σ) : DFA (Set Q) σ :=
 
    -/
 
+
+
 theorem DFA_NFA_equivalence {Q : Type u} {σ : Type v} (N : NFA Q σ) :
 ∃ (Q' : Type u) (M : DFA Q' σ), L_DFA M = L_NFA N := by
   exists (Set Q)
@@ -230,7 +233,33 @@ theorem DFA_NFA_equivalence {Q : Type u} {σ : Type v} (N : NFA Q σ) :
   rw[Subset.antisymm_iff,subset_def,subset_def]
   constructor
   · intro w ⟨ r, h_init, h_trans, h_accept ⟩
+    /- If w ∈ (L_DFA NFA_to_DFA N), then w ∈ L_NFA N.
+    To prove this is true, we must produce a list of states r that
+    satisfies the L_DFA language conditions.
+
+    What do we get by saying that w ∈ L_DFA (NFA_to_DFA N)?
+
+    We get a list of sets of states, where each set is
+    guaranteed to contain part of the origional run in R
+
+    -/
+    unfold L_NFA accepts_NFA
+    let q_final : Q := Classical.choose h_accept
+    have q_final_mem : q_final ∈ r ⟨w.length, _⟩ ∧ q_final ∈ N.F := Classical.choose_spec h_accept
+
+
+
+
+
+
+    -- Use something like the above to prove that ∀ i,
+
+
+
     sorry
+
+
+
   · intro w ⟨ r, h_init, h_trans, h_accept ⟩
     unfold L_DFA accepts
     exists run_DFA (NFA_to_DFA N) w
@@ -240,21 +269,27 @@ theorem DFA_NFA_equivalence {Q : Type u} {σ : Type v} (N : NFA Q σ) :
         by intro i; conv => {rhs; unfold run_DFA; simp}; rfl,
         by
         exists r ⟨ w.length, by simp ⟩
-        -- Two tasks: Prove that r : Q is accept state, and that it's in
-        -- The final step of the M progression*.
-
         exact ⟨
           by
-          let hx : ∀ i : Fin (w.length + 1), r i ∈ run_DFA (NFA_to_DFA N) w i := by
+          have : ∀ i : Fin (w.length + 1), r i ∈ run_DFA (NFA_to_DFA N) w i := by
             unfold run_DFA NFA_to_DFA
-            intro i
+            intro i; simp
             induction i using Fin.induction with
-            | zero=> simp; rw[h_init]; rfl
-            | succ i ih => simp; simp at ih; sorry
+            | zero => rw[h_init]; rfl
+            | succ i ih =>
+              cases i with | mk i hi =>
+              simp [Fin.succ]
+              exists r ⟨ i, by exact Nat.lt_add_right 1 hi⟩
+              exact ⟨ by unfold run_DFA; exact ih,
+                by
+                let i_fin : Fin w.length := ⟨i, hi⟩
+                have := h_trans i_fin
+                simp at this
+                exact this
+              ⟩
 
-
-
-          sorry
+          unfold run_DFA NFA_to_DFA at this
+          exact this ⟨ w.length, by simp⟩
           ,
           h_accept⟩ ,
       ⟩
