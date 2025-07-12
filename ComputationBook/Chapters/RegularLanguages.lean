@@ -225,6 +225,68 @@ def NFA_to_DFA {Q : Type u} {σ : Type v} (N : NFA Q σ) : DFA (Set Q) σ :=
    -/
 
 
+/-Maybe try this going forwards -/
+
+lemma run_back {Q : Type u} {σ : Type v} (N : NFA Q σ) (w : List σ)
+(r : Fin (w.length + 1) → Set Q)
+(h_trans : ∀ (i : Fin w.length),
+(NFA_to_DFA N).δ (r i.castSucc) w[i] = r (i.castSucc + 1)) :
+∀ i : Fin w.length, ∀ q ∈ r (i.succ), ∃ q' ∈ r i.castSucc, q ∈ N.δ q' w[i] := by
+  intro i q hq
+  let hx := h_trans i; simp at hx
+  rw[←hx] at hq; unfold NFA_to_DFA at hq; simp at hq
+  let q_prev : Q := Classical.choose hq
+  have q_prev_mem : q_prev ∈ r i.castSucc ∧ q ∈ N.δ q_prev w[i] := Classical.choose_spec hq
+  exists q_prev
+
+
+/-Equivalent to step-/
+noncomputable def get_prev_q {Q : Type u} {σ : Type v} (N : NFA Q σ) (w : List σ)
+(r : Fin (w.length + 1) → Set Q)
+(h_trans : ∀ (i : Fin w.length), (NFA_to_DFA N).δ (r i.castSucc) w[i] = r (i.castSucc + 1))
+(i : Fin w.length)
+(q : Q)
+(h_mem : q ∈ r ⟨i.succ, by simp⟩):
+{q_prev : Q // q_prev ∈ r i.castSucc ∧ q ∈ N.δ (q_prev) w[i] }:=
+  let h_run_back := (run_back N w r h_trans) i q h_mem
+  let q_prev: Q := Classical.choose h_run_back
+  let h : q_prev ∈ r i.castSucc ∧ q ∈ N.δ (q_prev) w[i] := Classical.choose_spec h_run_back
+
+⟨ q_prev, h ⟩
+/-The above takes in a q and a proof that q ∈ r (i + 1) and
+returns a q' and two proofs: q' ∈ r i and q ∈ N.δ q' w'=[i] -/
+
+
+
+/-
+Given a start state and a Fin w.length, walks backwards from given state
+that many times.
+
+We are given a q and an i and a proof that  q ∈ r (i + 1)
+ -/
+
+def get_q_backwards {Q : Type u} {σ : Type v} (N : NFA Q σ) (w : List σ)
+(r : Fin (w.length + 1) → Set Q)
+(h_trans : ∀ (i : Fin w.length), (NFA_to_DFA N).δ (r i.castSucc) w[i] = r (i.castSucc + 1))
+(i : Fin w.length)
+(curr_q : Q)
+(h_mem : curr_q ∈ r i.succ)
+(index : Fin (w.length + 1)) : Q :=
+  match index with
+  | ⟨ 0, _ ⟩ => curr_q
+  | ⟨ index' + 1, hi⟩ =>
+
+  let i' : Fin w.length := ⟨ i.val - 1, by omega⟩
+  let ⟨ q_prev, ⟨ hqr, hqd ⟩ ⟩ := get_prev_q N w r h_trans i (curr_q) h_mem
+  have : i.castSucc = i'.succ := by sorry
+  get_q_backwards N w r h_trans i' q_prev hqr index'
+
+
+  /- -/
+
+
+
+
 
 theorem DFA_NFA_equivalence {Q : Type u} {σ : Type v} (N : NFA Q σ) :
 ∃ (Q' : Type u) (M : DFA Q' σ), L_DFA M = L_NFA N := by
@@ -233,30 +295,15 @@ theorem DFA_NFA_equivalence {Q : Type u} {σ : Type v} (N : NFA Q σ) :
   rw[Subset.antisymm_iff,subset_def,subset_def]
   constructor
   · intro w ⟨ r, h_init, h_trans, h_accept ⟩
-    /- If w ∈ (L_DFA NFA_to_DFA N), then w ∈ L_NFA N.
-    To prove this is true, we must produce a list of states r that
-    satisfies the L_DFA language conditions.
 
-    What do we get by saying that w ∈ L_DFA (NFA_to_DFA N)?
-
-    We get a list of sets of states, where each set is
-    guaranteed to contain part of the origional run in R
-
-    -/
     unfold L_NFA accepts_NFA
     let q_final : Q := Classical.choose h_accept
     have q_final_mem : q_final ∈ r ⟨w.length, _⟩ ∧ q_final ∈ N.F := Classical.choose_spec h_accept
 
 
 
-
-
-
-    -- Use something like the above to prove that ∀ i,
-
-
-
     sorry
+
 
 
 
