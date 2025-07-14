@@ -225,8 +225,11 @@ def NFA_to_DFA {Q : Type u} {σ : Type v} (N : NFA Q σ) : DFA (Set Q) σ :=
    -/
 
 
-/-Maybe try this going forwards -/
 
+/-
+Given a state q in r (i + 1), returns a proof that ∃ a state q' in r (i)
+such that q ∈ N.delta q'
+-/
 lemma run_back {Q : Type u} {σ : Type v} (N : NFA Q σ) (w : List σ)
 (r : Fin (w.length + 1) → Set Q)
 (h_trans : ∀ (i : Fin w.length),
@@ -240,49 +243,48 @@ lemma run_back {Q : Type u} {σ : Type v} (N : NFA Q σ) (w : List σ)
   exists q_prev
 
 
-/-Equivalent to step-/
+/-
+Given a state q and a proof that q ∈ r (i + 1), returns the q_prev in
+r (i) such that q ∈ N.δ q_prev, and a proof of those facts.
+-/
 noncomputable def get_prev_q {Q : Type u} {σ : Type v} (N : NFA Q σ) (w : List σ)
 (r : Fin (w.length + 1) → Set Q)
 (h_trans : ∀ (i : Fin w.length), (NFA_to_DFA N).δ (r i.castSucc) w[i] = r (i.castSucc + 1))
 (i : Fin w.length)
 (q : Q)
 (h_mem : q ∈ r ⟨i.succ, by simp⟩):
-{q_prev : Q // q_prev ∈ r i.castSucc ∧ q ∈ N.δ (q_prev) w[i] }:=
+{q_prev : Q // q_prev ∈ r i.castSucc ∧ q ∈ N.δ (q_prev) w[i]} :=
   let h_run_back := (run_back N w r h_trans) i q h_mem
   let q_prev: Q := Classical.choose h_run_back
   let h : q_prev ∈ r i.castSucc ∧ q ∈ N.δ (q_prev) w[i] := Classical.choose_spec h_run_back
 
 ⟨ q_prev, h ⟩
-/-The above takes in a q and a proof that q ∈ r (i + 1) and
-returns a q' and two proofs: q' ∈ r i and q ∈ N.δ q' w'=[i] -/
 
 
 
-/-
-Given a start state and a Fin w.length, walks backwards from given state
-that many times.
+/-Oh, maybe the base case here can be the first set M. Ah. -/
 
-We are given a q and an i and a proof that  q ∈ r (i + 1)
- -/
 
-def get_q_backwards {Q : Type u} {σ : Type v} (N : NFA Q σ) (w : List σ)
+noncomputable def get_q_backwards {Q : Type u} {σ : Type v} (N : NFA Q σ) (w : List σ)
 (r : Fin (w.length + 1) → Set Q)
 (h_trans : ∀ (i : Fin w.length), (NFA_to_DFA N).δ (r i.castSucc) w[i] = r (i.castSucc + 1))
+(h_init : r 0 = (NFA_to_DFA N).q₀)
 (i : Fin w.length)
 (curr_q : Q)
-(h_mem : curr_q ∈ r i.succ)
-(index : Fin (w.length + 1)) : Q :=
-  match index with
-  | ⟨ 0, _ ⟩ => curr_q
-  | ⟨ index' + 1, hi⟩ =>
-
-  let i' : Fin w.length := ⟨ i.val - 1, by omega⟩
-  let ⟨ q_prev, ⟨ hqr, hqd ⟩ ⟩ := get_prev_q N w r h_trans i (curr_q) h_mem
-  have : i.castSucc = i'.succ := by sorry
-  get_q_backwards N w r h_trans i' q_prev hqr index'
+(h_mem : curr_q ∈ r i.succ) :
+List Q :=
+  match i with
+  | ⟨ 0, _⟩ =>  [N.q₀]
+  | ⟨ i' + 1, hi ⟩ =>
+  let prev_i: Fin w.length := ⟨ i' + 1, hi ⟩
+  let ⟨ prev_q, h_prev_q ⟩ := get_prev_q N w r h_trans prev_i curr_q h_mem
 
 
-  /- -/
+  get_q_backwards N w r h_trans h_init ⟨ i', by exact Nat.lt_of_succ_lt hi ⟩ prev_q h_prev_q.1
+  ++  [curr_q]
+
+
+
 
 
 
@@ -297,12 +299,47 @@ theorem DFA_NFA_equivalence {Q : Type u} {σ : Type v} (N : NFA Q σ) :
   · intro w ⟨ r, h_init, h_trans, h_accept ⟩
 
     unfold L_NFA accepts_NFA
-    let q_final : Q := Classical.choose h_accept
-    have q_final_mem : q_final ∈ r ⟨w.length, _⟩ ∧ q_final ∈ N.F := Classical.choose_spec h_accept
+
+
+    if h : w.length = 0  then
+      exists fun x => N.q₀
+      exact ⟨ rfl, sorry, sorry ⟩
+    else
+
+      let curr_i : Fin w.length := ⟨ w.length - 1, by exact Nat.sub_one_lt h ⟩
+      let q_final : Q := Classical.choose h_accept
+      have q_final_mem : q_final ∈ r ⟨w.length, Nat.lt_succ_self w.length⟩ ∧
+      q_final ∈ N.F := Classical.choose_spec h_accept
+
+      have succ_eq : curr_i.succ = ⟨w.length, Nat.lt_succ_self w.length⟩ := by
+        apply Fin.ext
+        exact Nat.succ_pred_eq_of_ne_zero h
+
+
+      exists fun x =>
+        (get_q_backwards N w r h_trans h_init curr_i q_final (succ_eq ▸ q_final_mem.1))[x]'
+
+        (by
+        unfold get_q_backwards
+        sorry
+
+
+        )
+
+      exact ⟨
+        by
+        unfold get_q_backwards
+        simp
+
+        sorry,
 
 
 
-    sorry
+        sorry,
+        sorry ⟩
+
+
+
 
 
 
@@ -334,7 +371,6 @@ theorem DFA_NFA_equivalence {Q : Type u} {σ : Type v} (N : NFA Q σ) :
                 simp at this
                 exact this
               ⟩
-
           unfold run_DFA NFA_to_DFA at this
           exact this ⟨ w.length, by simp⟩
           ,
