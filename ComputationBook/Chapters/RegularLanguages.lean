@@ -144,6 +144,29 @@ def accepts_NFA {Q : Type u} {σ : Type v} (M : NFA Q σ) (w : List σ) :=
   (r ⟨ w.length, by simp ⟩  ∈ M.F)
 
 
+/-
+You might have noticed something at this point: these proofs are getting
+long! That's largely because generating these sequences of states and then
+proving that they satisfy the langauge acceptance conditions comes with a lot of
+overhead. It would be easier if we could define the acceptance of a string by
+a DFA or an NFA as: when the machine runs with respect to that string, it ends
+up in an accept state. That way, instead of construcing these runs of states,
+we could just run the machine. To use this simpler definition, let's prove
+that it's equivalent to the accepts_NFA definition above.
+-/
+
+
+/-First, we define a run and a step function for our NFA:-/
+
+
+
+
+
+
+
+
+
+
 def L_NFA {Q : Type u} {σ : Type v} (M : NFA Q σ) : Set (List σ) :=
   {w | accepts_NFA M w}
 
@@ -157,132 +180,76 @@ def L_NFA {Q : Type u} {σ : Type v} (M : NFA Q σ) : Set (List σ) :=
       ⋃ r ∈ (run_NFA M w ⟨ k, h ⟩ ), M.δ r w[k]
 
 
+
+def NFA_step {Q : Type u} {σ : Type v} (N : NFA Q σ) (prev_states : Set Q) (s : σ) : Set Q :=
+  ⋃ q ∈ prev_states, N.δ q s
+
+/- And a run function: -/
+def NFA_run {Q : Type u} {σ : Type v} (N : NFA Q σ) (w : List σ) : Set Q :=
+  w.foldl (NFA_step N) {N.q₀}
+
+#check List.foldl
+/-
+Now, let's define the language of an NFA as the set of strings
+that are accepted by the NFA.
+-/
+
+def L_NFA' {Q : Type u} {σ : Type v} (N : NFA Q σ) : Set (List σ) :=
+  {w | ∃ r ∈ NFA_run N w, r ∈ N.F}
+
+/-To incrementally prove acceptance: verify induction step here-/
+
+/-if r i = q and q ∈ run_DFA w[:i], → r i + 1 ∈ run_DFA w[:i + 1 -/
+def induction_helper {Q : Type u} {σ : Type v} (N : NFA Q σ) (w : List σ)
+(r : Fin (w.length + 1) → Q)
+(h_trans : ∀ (i : Fin w.length), r (i.castSucc + 1) ∈ N.δ (r i.castSucc) w[i]) :
+∀ i : Fin w.length,
+    -- Maybe I need the last few bits of the list here instead of head.
+    r i.castSucc ∈ NFA_run N (w.take ↑i) →
+    r i.succ ∈ NFA_run N (w.take (↑i + 1)) := by
+  intro i h_prev
+  unfold NFA_run NFA_step
+  cases w with
+  | nil =>
+    cases i; trivial
+  | cons x xs =>
+
+    unfold NFA_run at h_prev;
+
+    sorry
+
+theorem NFA_language_equiv {Q : Type u} {σ : Type v} (N : NFA Q σ) : L_NFA N = L_NFA' N := by
+  unfold L_NFA L_NFA'
+  rw[Subset.antisymm_iff,subset_def,subset_def]
+  constructor
+  · intro w ⟨ r, h_init, h_trans, h_accept ⟩
+
+    exists r ⟨ w.length, by simp ⟩
+    exact ⟨
+      by
+      unfold NFA_run NFA_step
+      --have : ∀ i : Fin (w.length + 1), r i ∈ NFA_run N w
+      sorry
+      ,
+
+      h_accept ⟩
+  · intro w hw
+    sorry
+
+
+
+
+
+
+
+
+
 def NFA_to_DFA {Q : Type u} {σ : Type v} (N : NFA Q σ) : DFA (Set Q) σ :=
   ⟨
     (fun R a => ⋃ r ∈ R, N.δ r a),
     ({N.q₀}),
     ({R | ∃ r ∈ R, r ∈ N.F})
   ⟩
-  /-Given that w ∈ L NFA, show that w ∈ L DFA using our run_DFA definition.
-    w ∈ L NFA means that there exists a series of states r where
-    (1) the first state is in start state of N,
-    (2) ∀ i, r (i + 1) ∈ N.δ (r i) w[i], and
-    (3) r (w.length) ∈ N.F.
-
-    After the NFA has run, if any of the set of current states is ∈ N.F, the
-    word is accepted.
-
-    We need to prove that there is also an DFA that recognizes this same string.
-    We contructor our DFA as follows:
-
-    δ := fun (R : Set Q) (s : σ) → ⋃ r ∈ R, N.δ r s
-    q₀ := {N.q₀}
-    F := {(R : Set Q) | ∃ r ∈ R, r ∈ N.F}
-
-   The type of our DFA is Set Q. The delta function takes in a set of
-   states and a letter, and applies N.δ to each state in the set with
-   respect to that letter, each of which produces a set of states. These
-   sets of states are then all grouped into one happy set.
-
-   M.F is of type Set Set Q. F contains all of the sets of Q that contain
-   at least one of the states in N.F.
-
-   There are three criteria for the acceptance of a word by a DFA. I will lay
-   them out here and describe for each why the contruction of the DFA from the NFA
-   guarentees the satisfaction of that criteria.
-
-  where r i is defined as run_DFA M:
-
-   1. r 0 = M.q₀
-    This is known because M.q₀ was set as {N.q₀}.
-
-    2. Delta
-
-    3. We know that the last state is a member of M.F because we are given that
-       There exists a run of Q where each Q is a member of the set produced
-       By ONE previous state and the previous symbol, and that the last
-       state in the run is a member of the accept set of states.
-
-       Therefore, because M.delta is merely combining the sets of states
-       produced at each delta function, it is guaraneteed to include
-       the run of N states. Therefore, At each step of M, the (r_DFA i) = R : Set Q must contain
-       the r_NFA i = r : Q. And it follows that at the last step,
-       the final Set Q must contain a state that was part of the origional accept state.
-       Therefore, given that we defined the accept state of M as all of the sets that contain
-       one of the accept states in N.F, the final Set Q in the DFA run is an accept state.
-
-
-
-
-      Intermediate step: ∀ i, (r i) ∈ run_DFA M i
-      Therefore, r (w.length) ∈ run_DFA M i*
-      r (w.length) ∈ N.F
-      run_DFA M i contains an N.F accept state
-      that meets accept state criteria for M.
-
-
-
-   -/
-
-
-
-/-
-Given a state q in r (i + 1), returns a proof that ∃ a state q' in r (i)
-such that q ∈ N.delta q'
--/
-lemma run_back {Q : Type u} {σ : Type v} (N : NFA Q σ) (w : List σ)
-(r : Fin (w.length + 1) → Set Q)
-(h_trans : ∀ (i : Fin w.length),
-(NFA_to_DFA N).δ (r i.castSucc) w[i] = r (i.castSucc + 1)) :
-∀ i : Fin w.length, ∀ q ∈ r (i.succ), ∃ q' ∈ r i.castSucc, q ∈ N.δ q' w[i] := by
-  intro i q hq
-  let hx := h_trans i; simp at hx
-  rw[←hx] at hq; unfold NFA_to_DFA at hq; simp at hq
-  let q_prev : Q := Classical.choose hq
-  have q_prev_mem : q_prev ∈ r i.castSucc ∧ q ∈ N.δ q_prev w[i] := Classical.choose_spec hq
-  exists q_prev
-
-
-/-
-Given a state q and a proof that q ∈ r (i + 1), returns the q_prev in
-r (i) such that q ∈ N.δ q_prev, and a proof of those facts.
--/
-noncomputable def get_prev_q {Q : Type u} {σ : Type v} (N : NFA Q σ) (w : List σ)
-(r : Fin (w.length + 1) → Set Q)
-(h_trans : ∀ (i : Fin w.length), (NFA_to_DFA N).δ (r i.castSucc) w[i] = r (i.castSucc + 1))
-(i : Fin w.length)
-(q : Q)
-(h_mem : q ∈ r ⟨i.succ, by simp⟩):
-{q_prev : Q // q_prev ∈ r i.castSucc ∧ q ∈ N.δ (q_prev) w[i]} :=
-  let h_run_back := (run_back N w r h_trans) i q h_mem
-  let q_prev: Q := Classical.choose h_run_back
-  let h : q_prev ∈ r i.castSucc ∧ q ∈ N.δ (q_prev) w[i] := Classical.choose_spec h_run_back
-
-⟨ q_prev, h ⟩
-
-
-
-/-Oh, maybe the base case here can be the first set M. Ah. -/
-
-
-noncomputable def get_q_backwards {Q : Type u} {σ : Type v} (N : NFA Q σ) (w : List σ)
-(r : Fin (w.length + 1) → Set Q)
-(h_trans : ∀ (i : Fin w.length), (NFA_to_DFA N).δ (r i.castSucc) w[i] = r (i.castSucc + 1))
-(h_init : r 0 = (NFA_to_DFA N).q₀)
-(i : Fin w.length)
-(curr_q : Q)
-(h_mem : curr_q ∈ r i.succ) :
-List Q :=
-  match i with
-  | ⟨ 0, _⟩ =>  [N.q₀]
-  | ⟨ i' + 1, hi ⟩ =>
-  let prev_i: Fin w.length := ⟨ i' + 1, hi ⟩
-  let ⟨ prev_q, h_prev_q ⟩ := get_prev_q N w r h_trans prev_i curr_q h_mem
-
-
-  get_q_backwards N w r h_trans h_init ⟨ i', by exact Nat.lt_of_succ_lt hi ⟩ prev_q h_prev_q.1
-  ++  [curr_q]
-
 
 
 
@@ -299,47 +266,12 @@ theorem DFA_NFA_equivalence {Q : Type u} {σ : Type v} (N : NFA Q σ) :
   · intro w ⟨ r, h_init, h_trans, h_accept ⟩
 
     unfold L_NFA accepts_NFA
+    let finalState : Set Q := r ⟨ w.length , by simp⟩
+    unfold NFA_to_DFA at h_accept
+    simp at h_accept
+    rcases h_accept with ⟨q, hq_in_finalState, hq_in_NF⟩
 
-
-    if h : w.length = 0  then
-      exists fun x => N.q₀
-      exact ⟨ rfl, sorry, sorry ⟩
-    else
-
-      let curr_i : Fin w.length := ⟨ w.length - 1, by exact Nat.sub_one_lt h ⟩
-      let q_final : Q := Classical.choose h_accept
-      have q_final_mem : q_final ∈ r ⟨w.length, Nat.lt_succ_self w.length⟩ ∧
-      q_final ∈ N.F := Classical.choose_spec h_accept
-
-      have succ_eq : curr_i.succ = ⟨w.length, Nat.lt_succ_self w.length⟩ := by
-        apply Fin.ext
-        exact Nat.succ_pred_eq_of_ne_zero h
-
-
-      exists fun x =>
-        (get_q_backwards N w r h_trans h_init curr_i q_final (succ_eq ▸ q_final_mem.1))[x]'
-
-        (by
-        unfold get_q_backwards
-        sorry
-
-
-        )
-
-      exact ⟨
-        by
-        unfold get_q_backwards
-        simp
-
-        sorry,
-
-
-
-        sorry,
-        sorry ⟩
-
-
-
+    sorry
 
 
 
@@ -376,3 +308,11 @@ theorem DFA_NFA_equivalence {Q : Type u} {σ : Type v} (N : NFA Q σ) :
           ,
           h_accept⟩ ,
       ⟩
+
+theorem DFA_NFA_equivalence' {Q : Type u} {σ : Type v}
+(N : NFA Q σ)
+(M : DFA (Set Q) σ)
+(h : M = NFA_to_DFA N) :
+ L_NFA N = L_DFA M := by
+  ext x
+  sorry

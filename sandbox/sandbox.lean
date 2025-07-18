@@ -5,6 +5,10 @@ import Mathlib.Data.Set.Basic
 import Mathlib.Data.Matrix.Notation
 import Mathlib.Data.Matrix.Basic
 
+import Std.Data.HashSet
+import Std.Data.HashMap
+import Std.Data.HashSet
+
 variable {α : Type*}
 variable (A B : Set α)
 open Set
