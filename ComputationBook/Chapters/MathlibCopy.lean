@@ -226,7 +226,6 @@ theorem evalFrom_append_singleton (M : NFA Q σ) (S : Set Q) (x : List σ) (a : 
   simp only [evalFrom, List.foldl_append, List.foldl_cons, List.foldl_nil]
 
 
-variable (M) in
 @[simp]
 theorem evalFrom_biUnion (M : NFA Q σ) {ι : Type*} (t : Set ι) (f : ι → Set Q) :
     ∀ (x : List σ), evalFrom M (⋃ i ∈ t, f i) x = ⋃ i ∈ t, evalFrom M (f i) x
@@ -239,7 +238,7 @@ theorem evalFrom_eq_biUnion_singleton (M : NFA Q σ) (S : Set Q) (x : List σ) :
   simp [← evalFrom_biUnion]
 
 
-theorem mem_evalFrom_iff_exists (M : NFA Q σ) {s : Q} {S : Set Q} {x : List σ} :
+theorem mem_evalFrom_iff_exists {s : Q} {S : Set Q} {x : List σ} (M : NFA Q σ) :
     s ∈ evalFrom M S x ↔ ∃ t ∈ S, s ∈ evalFrom M {t} x := by
   rw [evalFrom_eq_biUnion_singleton]
   simp
@@ -255,23 +254,76 @@ def eval (M : NFA Q σ) : List σ → Set Q :=
 theorem eval_nil (M : NFA Q σ) : eval M [] = {M.q₀}  :=
   rfl
 
-variable (M) in
 @[simp]
 theorem eval_singleton (M : NFA Q σ) (a : σ) : eval M [a] = stepSet M {M.q₀} a :=
   rfl
 
-variable (M) in
 @[simp]
 theorem eval_append_singleton (M : NFA Q σ) (x : List σ) (a : σ) :
 eval M (x ++ [a]) = stepSet M (eval M x) a :=
   evalFrom_append_singleton ..
 
-variable (M) in
-/-- `M.accepts` is the language of `x` such that there is an accept state in `M.eval x`. -/
+
 def L (M : NFA Q σ): Set (List σ) := {x | ∃ S ∈ M.F, S ∈ eval M x}
 
 theorem mem_accepts {x : List σ} (M : NFA Q σ) :
 x ∈ L M ↔ ∃ S ∈ M.F, S ∈ evalFrom M {M.q₀} x := by
   rfl
 
+/- Proving equality of book's def and my def:-/
+
+def accepts' (M : NFA Q σ) (x : List σ) :=
+∃ r : Fin (x.length + 1) → Q,
+  (r 0 = M.q₀) ∧
+  (∀ i : Fin x.length, r (i.castSucc + 1) ∈ M.δ (r i.castSucc) x[i]) ∧
+  (r ⟨ x.length, by simp ⟩  ∈ M.F)
+
+
+def L' (M : NFA Q σ) : Set (List σ) := {x | accepts' M x}
+
+
+
+/-
+Here is lots of writing that explains exactly what this does.
+This is an inductive type that depends on a finite automata.
+
+It has a nil constructor that takes one argument representing a state,
+and it represents the path from that state to that state.
+
+The "cons" constructor takes in three states, a character, and a list as
+parameters.
+
+
+-/
+
+
+
+
 end NFA
+
+
+
+
+
+
+@[simp]
+def NFA_to_DFA (N : NFA Q σ) : DFA (Set Q) σ :=
+  ⟨
+    (fun R a => ⋃ r ∈ R, N.δ r a),
+    ({N.q₀}),
+    ({R | ∃ r ∈ N.F, r ∈ R})
+  ⟩
+
+theorem DFA_NFA_equivalence (N : NFA Q σ) :
+∃ (Q' : Type u) (M : DFA Q' σ), DFA.L M = NFA.L N := by
+  exists Set Q
+  exists NFA_to_DFA N
+
+
+
+namespace NFA_with_ε
+
+structure NFA (Q : Type u) (σ : Type v) where
+  δ : Q → σ → Set Q
+  q₀ : Q
+  F : Set Q
