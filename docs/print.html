@@ -167,31 +167,47 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="regular-languages"><a class="header" href="#regular-languages">Regular Languages</a></h1>
+                        <h1 id="regular-languages-and-finite-automata"><a class="header" href="#regular-languages-and-finite-automata">Regular Languages and Finite Automata</a></h1>
+<h2 id="overview"><a class="header" href="#overview">Overview</a></h2>
+<p>The following is a description of deterministic and nondeterministic finite automata in Lean, followed by a definition of regular languages and proofs of a handful of elementary theorems.</p>
+<p>The definitions and proofs come from the book</p>
+<ul>
+<li><a href="https://cs.brown.edu/courses/csci1810/fall-2023/resources/ch2_readings/Sipser_Introduction.to.the.Theory.of.Computation.3E.pdf">Introduction to the Theory of Computation, 3rd ed</a>.</li>
+</ul>
+<p>by Michael Sipser (hereafter "the book"). I would highly recommend reading chapter one in parallel with the material below to see helpful graphics and read more in-depth explanations than I provide.</p>
+<p>My implementation of finite automata in Lean is based on <a href="https://github.com/leanprover-community/mathlib4/tree/f68fe3b915fc989e0fcd1f6904eab27607f01b9f/Mathlib/Computability">Mathlib's Computability module</a>.</p>
+<h2 id="deterministic-finite-automata"><a class="header" href="#deterministic-finite-automata">Deterministic Finite Automata</a></h2>
+<p>Finite automata are simple models of computers. We will start by defining <strong>deterministic</strong> finite automata (DFAs) in particular. A visual example is the best way to learn about them, so I recommend that you look at Figure 1.4 and the following description in the book if you are unfamiliar.</p>
+<p>To summarize: DFAs are simple machines that either <em>accept</em> or <em>reject</em> strings of symbols. They start in their <em>start state</em>, and then transition from state to state according to their <em>transitions</em> (the arrows pointing from state to state) based on the current symbol being read from the input string.</p>
+<p>If, when done reading the string, the machine is in an <em>accept state</em>, the string is <em>accepted</em>, and if
+not, the string is <em>rejected</em>.</p>
+<p>State diagrams, like the one depicted in Figure 1.4, are great for intuitively understanding DFAs, but in order to formally reason about them, we will formally describe them:</p>
 <pre><code class="language-lean">import Mathlib.Data.Set.Basic
 import Mathlib.Data.Matrix.Notation
-import Mathlib.Data.Matrix.Basic
+set_option linter.style.longLine false
 
-variable {α : Type*}
-variable (A B : Set α)
-open Set
-</code></pre>
-<p>Explain what finite automata are.</p>
-<pre><code class="language-lean">universe u v
+universe u v
+variable {Q : Type u} {σ : Type v}
+
 
 structure DFA (Q : Type u) (σ : Type v) where
-  δ : Q → σ → Q
-  q₀ : Q
-  F : Set Q
+  δ : Q → σ → Q  -- Delta (transition) function
+  q₀ : Q         -- Start state
+  F : Set Q      -- Accept states
+
+namespace DFA
 </code></pre>
-<p>Maybe some examples</p>
+<p>We represent DFAs in Lean as a structure that takes two types as parameters. <code>Q</code> is the type of the states of the DFA. For example, if <code>Q</code> was the type <code>Nat</code>, the DFA could be in state 0, 1, 2, 3, ... (but then of course it would no longer be a <em>finite</em> automaton). Similarly, <code>σ</code> is the type of the alphabet.</p>
+<p><code>δ</code> is the transition function. It has type <code>Q → σ → Q</code> because it takes a state and a symbol and returns the state the DFA transitions into. <code>q₀</code> is the start state, and <code>F</code> is the set of accept states.</p>
+<p>Let's look at an example of a concrete DFA that can be in one of two states, <code>q₁</code> and <code>q₂</code> (See Example 1.7 in the book). The states of a DFA are represented by a type, so we define an inductive type with only two constructors:</p>
 <pre><code class="language-lean">inductive state where
 | q₁ : state
 | q₂ : state
+</code></pre>
+<p>If inductive types in Lean are new to you, the above is basically declaring a new type called <code>state</code>, and if a term is of type <code>state</code>, it is either <code>q₁</code> or <code>q₂</code>. The DFA will be able to read <code>0</code> or <code>1</code> as symbols, so the type of our alphabet <code>σ</code> will be <code>Fin 2</code>. Terms of type <code>Fin 2</code> must be natural numbers less than or equal to <code>2</code>, i.e. <code>0</code> or <code>1</code>. We now define our DFA with respect to those types:</p>
+<pre><code class="language-lean">namespace state
 
-namespace state
-
-def M₂ : DFA (state) (Fin 2) :=
+def M : DFA (state) (Fin 2) :=
 ⟨
   fun x s =&gt; match x with
   | q₁ =&gt; match s with | 0 =&gt; q₁ | 1 =&gt; q₂
@@ -201,19 +217,63 @@ def M₂ : DFA (state) (Fin 2) :=
 ⟩
 
 end state
-
-
-@[simp]
-def accepts {Q : Type u} {σ : Type v} (M : DFA Q σ) (w : List σ) :=
+</code></pre>
+<p>The constructor takes three arguments; firstly, the <code>δ</code> function, which corresponds to the table:</p>
+<pre><code>    +---+---+
+    | 0 | 1 |
++---+---+---+
+| q₁| q₁| q₂|
++---+---+---+
+| q₂| q₁| q₂|
++---+---+---+
+</code></pre>
+<p>Then the start state <code>q₁</code>, and finally the set of accept states: <code>{q₂}</code>. This DFA accepts all strings that end in a <code>1</code>.</p>
+<p>Now that we have a formal definition of DFAs, let's come up with a formal definition for the <strong>acceptance</strong> of a string by a DFA. According to the book, if <code>M = (Q, σ, δ, q₀, F)</code> is a DFA and <code>w = w₁w₂...wₙ</code> is a string where each <code>wᵢ</code> is a member of the alphabet <code>σ</code>, then <code>M</code> <strong>accepts</strong> <code>w</code> if a sequence of states <code>r₀,r₁,...,rₙ</code> in <code>Q</code> exists with three conditions:</p>
+<pre><code>1. r₀ = q₀,
+2. δ(rᵢ, wᵢ₊₁) = rᵢ₊₁ for i = 0,...,n-1, and
+3. rₙ ∈ F.
+</code></pre>
+<p>The first criteria checks that the sequence of states starts in M's start state, the second checks that each transition from state to state respects the <code>δ</code> function, and the third checks that the last state in the sequence of states is one of M's accept states.</p>
+<p>To represent this sequence of states in Lean, we will use a function <code>r</code> of type <code>Fin w.length + 1 → Q</code>. So, <code>r 0</code> will return the first state in the sequence, <code>r 1</code> the next, and so on up to the length of <code>w</code>. We say that a DFA M <strong>accepts</strong> a string <code>w</code> if there exists a sequence of states <code>r</code> that respects our three acceptance criteria. In Lean:</p>
+<pre><code class="language-lean">@[simp]
+def accepts' {Q : Type u} {σ : Type v} (M : DFA Q σ) (w : List σ) :=
   ∃ r : Fin (w.length + 1) → Q,
   (r 0 = M.q₀) ∧
   (∀ i : Fin (w.length), M.δ (r (i.castSucc)) w[i] = r (i.castSucc + 1)) ∧
   (r ⟨ w.length, by simp ⟩ ∈ M.F)
-
-
+</code></pre>
+<p>We mark the definition with <code>@[simp]</code> so that the <code>simp</code> tactic can unfold the definition. I called this definition <code>accepts'</code> instead of <code>accepts</code> because I want to introduce a different, more convenient definition later.</p>
+<h2 id="regular-languages"><a class="header" href="#regular-languages">Regular Languages</a></h2>
+<p>A <em>language</em> is a set of strings over a given alphabet. A DFA <em>recognizes</em> a language if it accepts every string in the language. A language is a <em>regular language</em> if some finite automaton recognizes it. In Lean, the language of a DFA can be defined like so:</p>
+<pre><code class="language-lean">def L' {Q : Type u} {σ : Type v} (M : DFA Q σ) : Set (List σ) := {w | accepts' M w}
+</code></pre>
+<p>Therefore, the set of strings recognized by a DFA is regular by definition.</p>
+<h2 id="regular-operations"><a class="header" href="#regular-operations">Regular Operations</a></h2>
+<p>The regular operations are operations on languages that preserve their regularity. One such operation is <strong>union</strong>, which is defined as follows:</p>
+<pre><code>If A and B are languages, A ∪ B = {x | x ∈ A or x ∈ B}
+</code></pre>
+<p>In other words, if <code>A</code> and <code>B</code> are regular languages (sets of strings) then A ∪ B (the combination of all strings in A and B) will <em>also</em> be a regular language. Recall that a language is <code>regular</code> if some DFA recognizes it, so the above theorem could be restated as: if there is some DFA <code>M₁</code> that recognizes a language <code>A</code>, and another DFA <code>M₂</code> that recognizes a language <code>B</code>, then there must exist some DFA <code>M₃</code> that accepts all strings in <code>A ∪ B</code> (both languages).</p>
+<p>In order to prove the above, we must actually construct the DFA <code>M₃</code>. Our strategy will be to "simulate" <code>M₁</code> and <code>M₂</code> with <code>M₃</code>, and keep track of what states they would each be in if they were reading the input string.</p>
+<p>To that end, if <code>Q₁</code> is the type of the states of <code>M₁</code> and <code>Q₂</code> is the type of the states of <code>M₂</code>, <code>Q₁ × Q₂</code> will be the type of the states of <code>M₃</code>. That is, at any given time, the state of <code>M₃</code> is represented by an ordered pair, where the first entry in the pair is one of the original states of <code>M₁</code>, and the second entry is one of the original states from <code>M₂</code>.</p>
+<p>The <code>δ</code> function for <code>M₃</code> will apply <code>M₁.δ</code> to the first entry in the ordered pair, and <code>M₂.δ</code> to the second entry. The start state for <code>M₃</code> will be the ordered pair <code>(M₁.q₀, M₂.q₀)</code>, and the set of accept states will be all states where the first entry in the ordered pair is an accept state for <code>M₁</code>, and all states where the second entry is an accept state for <code>M₂</code>.</p>
+<p>In this way, we have "simulated" <code>M₁</code> and <code>M₂</code> in <code>M₃</code>, and it will accept any string that <code>M₁</code> or <code>M₂</code> does. I would highly recommend reading Theorem 1.25 in the book for more details on how this proof works.</p>
+<p>In Lean, we can define this combination of <code>M₁</code> and <code>M₂</code> like so:</p>
+<pre><code class="language-lean">universe w
 
 @[simp]
-def run_DFA {Q : Type u} {σ : Type v} (M : DFA Q σ) (w : List σ) (steps : Fin (w.length + 1)): Q :=
+def product_of_automata {Q₁ : Type u} {Q₂ : Type w} {σ : Type v}
+(M₁ : DFA Q₁ σ) (M₂ : DFA Q₂ σ) :
+DFA (Q₁ × Q₂) σ :=
+⟨
+  fun (q₁, q₂) s =&gt; (M₁.δ q₁ s, M₂.δ q₂ s),
+  (M₁.q₀, M₂.q₀),
+  { (q₁, q₂) | (q₁ ∈ M₁.F) ∨ (q₂ ∈ M₂.F) }
+⟩
+</code></pre>
+<p>Before we prove the theorem, let's define a couple of helpful functions. Recall that our definition of acceptance is that there exists a sequence of states <code>r</code> that meets the acceptance criteria, so the following will help us generate those sequences of states:</p>
+<pre><code class="language-lean">@[simp]
+def run_DFA {Q : Type u} {σ : Type v} (M : DFA Q σ) (w : List σ)
+(steps : Fin (w.length + 1)): Q :=
   match steps with
   | 0 =&gt; M.q₀
   | ⟨ k + 1, h ⟩  =&gt;
@@ -221,39 +281,31 @@ def run_DFA {Q : Type u} {σ : Type v} (M : DFA Q σ) (w : List σ) (steps : Fin
     M.δ (run_DFA M w ⟨ k, h ⟩) w[k]
 
 
-
-def L_DFA {Q : Type u} {σ : Type v} (M : DFA Q σ) : Set (List σ) := {w | accepts M w}
-
-universe w
-
-def product_of_automata {Q₁ : Type u} {Q₂ : Type w} {σ : Type v} (M₁ : DFA Q₁ σ) (M₂ : DFA Q₂ σ) :
-DFA (Q₁ × Q₂) σ :=
-⟨
-  fun (q₁, q₂) s =&gt; (M₁.δ q₁ s, M₂.δ q₂ s),
-  (M₁.q₀, M₂.q₀),
-  { (q₁, q₂) | (q₁ ∈ M₁.F) ∨ (q₂ ∈ M₂.F) }
-⟩
-
-def run_DFA1 {Q₁ : Type u} {Q₂ : Type w} {σ : Type v} (M₂ : DFA Q₂ σ) (w : List σ)
+-- Run of states in M₃ if w ∈ L' M₁
+def run_DFA_left {Q₁ : Type u} {Q₂ : Type w} {σ : Type v} (M₂ : DFA Q₂ σ) (w : List σ)
 (r : Fin (w.length + 1) → Q₁) :
   Fin (w.length + 1) → Q₁ × Q₂ := fun x =&gt; (r x, run_DFA M₂ w x)
 
-def run_DFA2 {Q₁ : Type u} {Q₂ : Type w} {σ : Type v} (M₁ : DFA Q₁ σ) (w : List σ)
+-- Run of states in M₃ if w ∈ L' M₂
+def run_DFA_right {Q₁ : Type u} {Q₂ : Type w} {σ : Type v} (M₁ : DFA Q₁ σ) (w : List σ)
 (r : Fin (w.length + 1) → Q₂) :
   Fin (w.length + 1) → Q₁ × Q₂ := fun x =&gt; (run_DFA M₁ w x, r x)
-
+</code></pre>
+<p>Now we are ready to prove that the union of two regular languages is a regular language!</p>
+<h2 id="proof-that-the-class-of-regular-languages-is-closed-under-the-union-operation"><a class="header" href="#proof-that-the-class-of-regular-languages-is-closed-under-the-union-operation">Proof that the Class of Regular Languages is Closed Under the Union Operation</a></h2>
+<pre><code class="language-lean">open Set
 
 theorem regular_languages_closed_under_union {Q₁ : Type u} {Q₂ : Type w} {σ : Type v}
 (M₁ : DFA Q₁ σ)
 (M₂ : DFA Q₂ σ) :
-∃ Q : Type (max u w), ∃ M : DFA Q σ, L_DFA M = L_DFA M₁ ∪ L_DFA M₂ := by
+∃ Q : Type (max u w), ∃ M : DFA Q σ, L' M = L' M₁ ∪ L' M₂ := by
   exists Q₁ × Q₂
   exists product_of_automata M₁ M₂
   rw[Subset.antisymm_iff,subset_def,subset_def,union_def]
   unfold product_of_automata
   constructor
   · intro w  ⟨ r, h_intro, h_trans, h_accept⟩
-    unfold L_DFA accepts; simp; simp at h_intro h_trans h_accept
+    unfold L' accepts'; simp; simp at h_intro h_trans h_accept
     cases h_accept with
     | inl hl =&gt;
       apply Or.inl
@@ -267,13 +319,13 @@ theorem regular_languages_closed_under_union {Q₁ : Type u} {Q₂ : Type w} {σ
       exact ⟨ by simp; rw[h_intro],
               by simp; intro i; rw[←h_trans],
               by simp; exact hr⟩
-  · unfold L_DFA accepts; simp
+  · unfold L' accepts'; simp
     intro w hw
     cases hw with
     | inl hl =&gt;
       obtain ⟨r, h_init, h_trans, h_accept⟩ := hl
-      exists run_DFA1 M₂ w r
-      unfold run_DFA1
+      exists run_DFA_left M₂ w r
+      unfold run_DFA_left
       exact ⟨
         by unfold run_DFA; simp; exact ⟨ h_init, rfl ⟩,
         by intro i; simp; exact ⟨
@@ -284,8 +336,8 @@ theorem regular_languages_closed_under_union {Q₁ : Type u} {Q₂ : Type w} {σ
       ⟩
     | inr hr =&gt;
       obtain ⟨r, h_init, h_trans, h_accept⟩ := hr
-      exists run_DFA2 M₁ w r
-      unfold run_DFA2
+      exists run_DFA_right M₁ w r
+      unfold run_DFA_right
       exact ⟨
         by unfold run_DFA; simp; exact ⟨ rfl, h_init ⟩,
         by intro i; simp; exact ⟨
@@ -293,128 +345,143 @@ theorem regular_languages_closed_under_union {Q₁ : Type u} {Q₂ : Type w} {σ
           by exact h_trans i
         ⟩,
         by apply Or.inr; simp; exact h_accept⟩
+</code></pre>
+<p>Whew! That's a beast of a proof. Its size comes from the fact that in order to prove a given string is accepted by a DFA, we must generate the sequence of states that the DFA transitions through when it reads that string <em>and</em> prove that the sequence of states meets the three criteria defined above.</p>
+<h2 id="alternative-definition-of-acceptance"><a class="header" href="#alternative-definition-of-acceptance">Alternative Definition of Acceptance</a></h2>
+<p>It would be much more convenient to just say: a string is accepted by a DFA if, when run with respect to that string, the DFA ends up in an accept state. No need to generate a sequence of states; just run the DFA and see what happens. This is actually the way Mathlib, Lean's math library, defines acceptance for a DFA in its Computability module. Here is an alternative set of definitions adapted from Mathlib:</p>
+<pre><code class="language-lean">@[simp]
+def evalFrom (M : DFA Q σ) (s : Q) : List σ → Q :=
+  List.foldl M.δ s
 
+@[simp]
+def eval (M : DFA Q σ): List σ → Q :=
+  evalFrom M M.q₀
+</code></pre>
+<p>Now for the key difference. Instead of generating a sequence of states to prove that a word is accepted, we evaluate the string using the DFA's transition function, and see if the DFA ends up in one of its acceptance states.</p>
+<pre><code class="language-lean">@[simp]
+def acceptsFrom (M : DFA Q σ) (s : Q) : Set (List σ) := {x | evalFrom M s x ∈ M.F}
 
-structure NFA (Q : Type u) (σ : Type v) where
+@[simp]
+def L (M : DFA Q σ) : Set (List σ) := acceptsFrom M M.q₀
+</code></pre>
+<p>Now we have an alternative definition of the language of a DFA <code>L</code> that we suspect will be easier to use, but is it equivalent to the definition given in the book (our <code>L'</code>)? If only there was a way to prove that it was...</p>
+<p>Wait a gosh darn minute, this is Lean! We can prove anything! Let's prove that these two definitions imply each other:</p>
+<h2 id="the-definitions-of-acceptance-are-equal"><a class="header" href="#the-definitions-of-acceptance-are-equal">The Definitions of Acceptance Are Equal</a></h2>
+<pre><code class="language-lean">theorem lang_def_eq (M : DFA Q σ) (x : List σ) : x ∈ L M ↔ x ∈ L' M := by
+  unfold L L' acceptsFrom accepts' evalFrom
+  apply Iff.intro
+  · intro hx
+    exists fun i =&gt; List.foldl M.δ M.q₀ (x.take i.val)
+    constructor
+    · simp
+    · constructor
+      · intro i
+        simp
+        have : List.take (↑i + 1) x = List.take (↑i) x ++ [x[↑i]] := by simp
+        rw[this,List.foldl_concat]
+        rfl
+      · simp
+        exact hx
+  · intro ⟨r, h_init, h_trans, h_accept⟩
+    simp
+    have : ∀ i : Fin (x.length + 1), r i = List.foldl M.δ M.q₀ (x.take i) := by
+      intro i
+      induction i using Fin.induction with
+      | zero =&gt; simp; exact h_init
+      | succ i ih =&gt;
+      simp at h_trans
+      rw[←h_trans i]
+      have : List.take (i.succ) x = List.take (↑i) x ++ [x[↑i]] := by simp
+      rw[this,List.foldl_concat,ih]
+      rfl
+    have final_eq := this ⟨x.length, by simp⟩
+    rw[final_eq] at h_accept; simp at h_accept
+    exact h_accept
+</code></pre>
+<p>Fantastic. Now we can try to reprove the union theorem using our new definition <code>L</code>:</p>
+<pre><code class="language-lean">variable {Q₁ : Type u} {Q₂ : Type w} (M₁ : DFA Q₁ σ) (M₂ : DFA Q₂ σ)
+
+-- Helper theorem that lets us apply the δ function to the elements in a pair.
+@[simp]
+theorem foldl_prod_eq (M₁ : DFA Q₁ σ) (M₂ : DFA Q₂ σ) (x : List σ) :
+  List.foldl (product_of_automata M₁ M₂).δ (product_of_automata M₁ M₂).q₀ x =
+  ((List.foldl M₁.δ M₁.q₀ x), (List.foldl M₂.δ M₂.q₀ x)) := by
+  simp
+  exact
+  List.foldl_hom₂ x Prod.mk M₁.δ M₂.δ (fun x s ↦ (M₁.δ x.1 s, M₂.δ x.2 s)) M₁.q₀ M₂.q₀ fun a b ↦
+  congrFun rfl
+
+theorem regular_languages_closed_under_union_2 (M₁ : DFA Q₁ σ) (M₂ : DFA Q₂ σ)
+: ∃ Q : Type (max u w), ∃ (M : DFA Q σ), L M = L M₁ ∪ L M₂ := by
+exists Q₁ × Q₂
+exists product_of_automata M₁ M₂
+unfold L
+rw[Subset.antisymm_iff,subset_def,subset_def]
+simp only [acceptsFrom,evalFrom]
+constructor
+· intro x hx;
+  cases hx with
+  | inl hl =&gt;
+    rw[foldl_prod_eq M₁ M₂ x] at hl; simp at hl
+    exact Or.inl hl
+  | inr hr =&gt;
+    rw[foldl_prod_eq M₁ M₂ x] at hr; simp at hr
+    exact Or.inr hr
+· intro x hx
+  cases hx with
+  | inl hl =&gt;
+  exact Or.inl (by rw[foldl_prod_eq M₁ M₂ x]; simp; exact hl)
+  | inr hr =&gt;
+  exact Or.inr (by rw[foldl_prod_eq M₁ M₂ x]; simp; exact hr)
+
+end DFA
+</code></pre>
+<p>Our redefinition allowed us to shorten our theorem from 49 lines to 26 lines! What a win. Another thing to notice about the Mathlib theorems is that they start from simple definitions and build on one another. That's one of the hallmarks of mature Lean programming: the ability to split a difficult problem or theorem into small, easily digestible parts.</p>
+<h2 id="nondeterministic-finite-automata"><a class="header" href="#nondeterministic-finite-automata">Nondeterministic Finite Automata</a></h2>
+<p>We now move on to nondeterministic finite automata (NFAs). The difference between NFAs and DFAs is that NFAs can be in several states at once (hence their nondeterminism). Here is their formal definition in Lean:</p>
+<pre><code class="language-lean">structure NFA (Q : Type u) (σ : Type v) where
   δ : Q → σ → Set Q
   q₀ : Q
   F : Set Q
+</code></pre>
+<p>The only difference between this definition and the definition of the DFA is that for the DFA, the <code>δ</code> function has type <code>Q → σ → Q</code>, but here, for the NFA, the <code>δ</code> function has type <code>Q → σ → Set Q</code>. This means that for any given state and symbol, a DFA can go into a <em>set</em> of states (as opposed to just one state in the case of the DFA).</p>
+<p>To run an NFA, we start at the start state <code>q₀</code> and apply the <code>δ</code> function to it with respect to the first symbol in the input string. This produces a set of states. We then apply the <code>δ</code> function again to each of the states in that set, producing other sets of states. We union those sets together, then repeat the process, applying the <code>δ</code> function to each of the states in <em>that</em> set.</p>
+<p>The NFA accepts a string if <em>any</em> of the states in the final set of states produced by running the NFA with respect to that string is an accept state of the NFA. For a more detailed explanation of NFAs, see Chapter 1.2 in the book.</p>
+<p>The book's definition of acceptance for NFAs involves generating a sequence of valid states, but let's go straight to the Mathlib definition described above (I leave the proof of their equality as an exercise for the reader). The following definitions are slightly modified from the Mathlib Computability module definitions:</p>
+<pre><code class="language-lean">namespace NFA
 
-def accepts_NFA {Q : Type u} {σ : Type v} (M : NFA Q σ) (w : List σ) :=
-  ∃ r : Fin (w.length + 1) → Q,
-  (r 0 = M.q₀) ∧
-  (∀ i : Fin w.length, r (i.castSucc + 1) ∈ M.δ (r i.castSucc) w[i]) ∧
-  (r ⟨ w.length, by simp ⟩  ∈ M.F)
+def stepSet (M : NFA Q σ) (S : Set Q) (a : σ) : Set Q :=
+  ⋃ s ∈ S, M.δ  s a
 
+def evalFrom (M : NFA Q σ) (S : Set Q) : List σ → Set Q :=
+  List.foldl (stepSet M) S
 
-def L_NFA {Q : Type u} {σ : Type v} (M : NFA Q σ) : Set (List σ) :=
-  {w | accepts_NFA M w}
+def eval (M : NFA Q σ) : List σ → Set Q :=
+  evalFrom M {M.q₀}
+
+def L (M : NFA Q σ): Set (List σ) := {x | ∃ S ∈ M.F, S ∈ eval M x}
+</code></pre>
+<h2 id="nfa-and-dfa-equivalence"><a class="header" href="#nfa-and-dfa-equivalence">NFA and DFA Equivalence</a></h2>
+<p>We will now set out to prove that for every NFA, there exists a DFA that recognizes the same language. We will use a strategy similar to the one we used earlier: given an NFA, we will construct a DFA guaranteed to accept all of the same strings.</p>
+<p>Let's say we are given an NFA <code>N</code> with state type <code>Q</code>, and we want to construct a DFA <code>M</code> that accepts all of the same strings. <code>N</code> can be in many states at once, so we let the type of the states of <code>M</code> be <code>Set Q</code>. At any given time, the state of our DFA is a <em>set</em> of the original states of <code>N</code>, and these states should correspond to all of the states that the NFA would be in if it saw the same symbols.</p>
+<p>We want <code>M</code> to transition according to the <code>δ</code> function of <code>N</code>, so to move <code>M</code> from state to state, we apply <code>N.δ</code> to each state in the set of states that represents the current state of <code>M</code>. <code>M</code> accepts a string if, when done running, the <code>Set Q</code> that represents its current state contains an accept state of <code>N</code>.</p>
+<p>This is a somewhat tricky proof very concisely explained; for more detail, see Theorem 1.39 in the book.</p>
+<p>In Lean, we construct our DFA from our NFA like so:</p>
+<pre><code class="language-lean">end NFA
 
 @[simp]
- def run_NFA {Q : Type u} {σ : Type v}
- (M : NFA Q σ) (w : List σ) (steps : Fin (w.length + 1)) : Set Q :=
-    match steps with
-    | ⟨ 0, _ ⟩  =&gt; {M.q₀}
-    | ⟨ k + 1, h ⟩ =&gt;
-      let h : k &lt; w.length + 1 := by omega
-      ⋃ r ∈ (run_NFA M w ⟨ k, h ⟩ ), M.δ r w[k]
-
-
-def NFA_to_DFA {Q : Type u} {σ : Type v} (N : NFA Q σ) : DFA (Set Q) σ :=
+def NFA_to_DFA (N : NFA Q σ) : DFA (Set Q) σ :=
   ⟨
     (fun R a =&gt; ⋃ r ∈ R, N.δ r a),
     ({N.q₀}),
-    ({R | ∃ r ∈ R, r ∈ N.F})
+    ({R | ∃ r ∈ N.F, r ∈ R})
   ⟩
 </code></pre>
-<p>Given that w ∈ L NFA, show that w ∈ L DFA using our run_DFA definition.
-w ∈ L NFA means that there exists a series of states r where
-(1) the first state is in start state of N,
-(2) ∀ i, r (i + 1) ∈ N.δ (r i) w[i], and
-(3) r (w.length) ∈ N.F.</p>
-<pre><code>After the NFA has run, if any of the set of current states is ∈ N.F, the
-word is accepted.
-
-We need to prove that there is also an DFA that recognizes this same string.
-We contructor our DFA as follows:
-
-δ := fun (R : Set Q) (s : σ) → ⋃ r ∈ R, N.δ r s
-q₀ := {N.q₀}
-F := {(R : Set Q) | ∃ r ∈ R, r ∈ N.F}
-</code></pre>
-<p>The type of our DFA is Set Q. The delta function takes in a set of
-states and a letter, and applies N.δ to each state in the set with
-respect to that letter, each of which produces a set of states. These
-sets of states are then all grouped into one happy set.</p>
-<p>M.F is of type Set Set Q. F contains all of the sets of Q that contain
-at least one of the states in N.F.</p>
-<p>There are three criteria for the acceptance of a word by a DFA. I will lay
-them out here and describe for each why the contruction of the DFA from the NFA
-guarentees the satisfaction of that criteria.</p>
-<p>where r i is defined as run_DFA M:</p>
-<ol>
-<li>r 0 = M.q₀
-This is known because M.q₀ was set as {N.q₀}.</li>
-</ol>
-<pre><code>2. Delta
-
-3. We know that the last state is a member of M.F because we are given that
-   There exists a run of Q where each Q is a member of the set produced
-   By ONE previous state and the previous symbol, and that the last
-   state in the run is a member of the accept set of states.
-
-   Therefore, because M.delta is merely combining the sets of states
-   produced at each delta function, it is guaraneteed to include
-   the run of N states. Therefore, At each step of M, the (r_DFA i) = R : Set Q must contain
-   the r_NFA i = r : Q. And it follows that at the last step,
-   the final Set Q must contain a state that was part of the origional accept state.
-   Therefore, given that we defined the accept state of M as all of the sets that contain
-   one of the accept states in N.F, the final Set Q in the DFA run is an accept state.
-
-
-
-
-  Intermediate step: ∀ i, (r i) ∈ run_DFA M i
-  Therefore, r (w.length) ∈ run_DFA M i*
-  r (w.length) ∈ N.F
-  run_DFA M i contains an N.F accept state
-  that meets accept state criteria for M.
-</code></pre>
-<pre><code class="language-lean">theorem DFA_NFA_equivalence {Q : Type u} {σ : Type v} (N : NFA Q σ) :
-∃ (Q' : Type u) (M : DFA Q' σ), L_DFA M = L_NFA N := by
-  exists (Set Q)
+<p>The proof that for every NFA there exists an equivalent DFA is now trivial:</p>
+<pre><code class="language-lean">theorem DFA_NFA_equivalence (N : NFA Q σ) :
+∃ (Q' : Type u) (M : DFA Q' σ), DFA.L M = NFA.L N := by
+  exists Set Q
   exists NFA_to_DFA N
-  rw[Subset.antisymm_iff,subset_def,subset_def]
-  constructor
-  · intro w ⟨ r, h_init, h_trans, h_accept ⟩
-    sorry
-  · intro w ⟨ r, h_init, h_trans, h_accept ⟩
-    unfold L_DFA accepts
-    exists run_DFA (NFA_to_DFA N) w
-    · unfold run_DFA NFA_to_DFA; simp
-      exact ⟨
-        by rfl,
-        by intro i; conv =&gt; {rhs; unfold run_DFA; simp}; rfl,
-        by
-        exists r ⟨ w.length, by simp ⟩
-        -- Two tasks: Prove that r : Q is accept state, and that it's in
-        -- The final step of the M progression*.
-
-        exact ⟨
-          by
-          let hx : ∀ i : Fin (w.length + 1), r i ∈ run_DFA (NFA_to_DFA N) w i := by
-            unfold run_DFA NFA_to_DFA
-            intro i
-            induction i using Fin.induction with
-            | zero=&gt; simp; rw[h_init]; rfl
-            | succ i ih =&gt; simp; simp at ih; sorry
-
-
-
-          sorry
-          ,
-          h_accept⟩ ,
-      ⟩
 </code></pre>
 
                     </main>
