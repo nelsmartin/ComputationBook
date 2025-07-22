@@ -1,30 +1,69 @@
-/- # Regular Languages -/
+/- # Regular Languages and Finite Automata
 
+## Overview
+
+The following is a description of deterministic and nondeterministic finite automata in Lean, along with \
+a description of regular languages and proofs of a handful of elementary theorems.
+
+The definitions and proofs come from the book Introduction to the Theory of Computation, 3rd ed. by \
+Michael Sipser (hereafter "the book"). I would highly recommend reading chapter one in parallel with \
+the material below to see helpful graphics and read more in-depth explanations than I provide.
+
+My implementation of finite automata in Lean is based on Mathlib's Computability module.
+
+## Deterministic Finite Automata
+
+Finite automata are simple models of computers. We will start by defining **deterministic** finite automata \
+(DFAs) in particular. A visual example is the best way to initially learn about them, so I recommend \
+that you look at Figure 1.4 and the following description in the book if you are unfamiliar. \
+
+To summarize: DFAs are simple machines that either *accept* or *reject* strings of symbols. They \
+start in their *start state*, and then transition from state to state according to their *transitions*
+(the arrows pointing from state to state) based on the current symbol being read from the input string.
+
+If, when done reading the string, the machine is in an *accept state*, the string is *accepted*, and if
+not, the string is *rejected*.
+
+State diagrams, like the one depicted in Figure 1.4, are great for intuitively understanding DFAs, but in
+order to fomally reason about them, we will formally describe them:
+-/
 
 import Mathlib.Data.Set.Basic
 import Mathlib.Data.Matrix.Notation
-import Mathlib.Data.Matrix.Basic
 
-variable {α : Type*}
-variable (A B : Set α)
-open Set
-
-
-/-Explain what finite automata are.-/
 universe u v
 
 structure DFA (Q : Type u) (σ : Type v) where
-  δ : Q → σ → Q
-  q₀ : Q
-  F : Set Q
+  δ : Q → σ → Q  -- Delta (transition) function
+  q₀ : Q         -- Start state
+  F : Set Q      -- Accept states
 
+/-
+We represent DFAs in Lean as a structure that takes two types as parameters. `Q` \
+is the type of the states of the DFA. For example, if `Q` was `Nat`, the DFA \
+could be in state 0, 1, 2, 3, ... (but then of course it would no longer be a *finite* \
+automaton). Similarly, `σ` is the type of the alphabet.
 
-/-Maybe some examples -/
+`δ` is the transition function. It has type `Q → σ → Q` because it takes a state and a symbol \
+and returns the state the DFA transitions into. `q₀` is the start state, and `F` is the set of \
+accept states.
+
+Let's look at an example of a concrete DFA that can be in one of two states, `q₁` and \
+`q₂`. The states of a DFA are represented by a type, so we define an inductive type with only two \
+constructors:
+-/
 
 inductive state where
 | q₁ : state
 | q₂ : state
 
+/-
+If inductive types in Lean are new to you, the above is basically declaring a new type called \
+`state`, and if a term is of type `state`, it is either `q₁` or `q₂`. The DFA will be able to
+read `0` or `1` as symbols, so the type of our alphabet σ will be `Fin 2`. If a term is of type
+`Fin 2`, that means it is a natural number less than or equal to `2`, or in other words, `0` or
+`1`.
+-/
 namespace state
 
 def M₂ : DFA (state) (Fin 2) :=
@@ -47,6 +86,7 @@ def accepts {Q : Type u} {σ : Type v} (M : DFA Q σ) (w : List σ) :=
   (r ⟨ w.length, by simp ⟩ ∈ M.F)
 
 
+def L_DFA {Q : Type u} {σ : Type v} (M : DFA Q σ) : Set (List σ) := {w | accepts M w}
 
 @[simp]
 def run_DFA {Q : Type u} {σ : Type v} (M : DFA Q σ) (w : List σ) (steps : Fin (w.length + 1)): Q :=
@@ -58,7 +98,6 @@ def run_DFA {Q : Type u} {σ : Type v} (M : DFA Q σ) (w : List σ) (steps : Fin
 
 
 
-def L_DFA {Q : Type u} {σ : Type v} (M : DFA Q σ) : Set (List σ) := {w | accepts M w}
 
 universe w
 
@@ -78,6 +117,8 @@ def run_DFA2 {Q₁ : Type u} {Q₂ : Type w} {σ : Type v} (M₁ : DFA Q₁ σ) 
 (r : Fin (w.length + 1) → Q₂) :
   Fin (w.length + 1) → Q₁ × Q₂ := fun x => (run_DFA M₁ w x, r x)
 
+
+open Set
 
 theorem regular_languages_closed_under_union {Q₁ : Type u} {Q₂ : Type w} {σ : Type v}
 (M₁ : DFA Q₁ σ)
